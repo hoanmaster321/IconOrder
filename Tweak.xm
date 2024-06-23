@@ -10,6 +10,10 @@
 @property(nonatomic) NSUInteger numberOfPortraitColumns;
 @end
 
+@interface SBHIconGridConfiguration : NSObject
+@property (nonatomic, readonly) SBHHomeScreenIconGridLayoutConfiguration *homeScreenConfiguration;
+@end
+
 @interface SBIconView : UIView
 @property (nonatomic, retain) NSString *applicationBundleIdentifierForShortcuts;
 - (void)setLocation:(CGPoint)location;
@@ -23,6 +27,7 @@
 @end
 
 static NSMutableDictionary *anchorPositions;
+static NSMutableDictionary *mutableDict;
 
 %hook SBIconView
 
@@ -56,16 +61,41 @@ static NSMutableDictionary *anchorPositions;
 
 %end
 
-// ... (previous code for SBHHomeScreenIconGridLayoutConfiguration and SBIconController hooks)
+%hook SBHHomeScreenIconGridLayoutConfiguration
+- (NSUInteger)maximumIconCount {
+    NSUInteger originalCount = %orig;
+    NSUInteger customCount = self.numberOfPortraitRows * self.numberOfPortraitColumns;
+    return MAX(originalCount, customCount);
+}
+%end
+
+%hook SBIconController
+- (id)iconState {
+    id orig = %orig;
+    if ([mutableDict objectForKey:KEY]) {
+        return [mutableDict objectForKey:KEY];
+    }
+    [mutableDict setValue:orig forKey:KEY];
+    [mutableDict writeToFile:PREF_PATH atomically:YES];
+    return orig;
+}
+
+- (void)setIconState:(id)state {
+    [mutableDict setValue:state forKey:KEY];
+    [mutableDict writeToFile:PREF_PATH atomically:YES];
+    %orig(state);
+}
+%end
 
 %ctor {
     anchorPositions = [NSMutableDictionary dictionary];
     NSDictionary *savedDict = [NSDictionary dictionaryWithContentsOfFile:PREF_PATH];
-    if (savedDict) {
-        NSDictionary *savedAnchorPositions = [savedDict objectForKey:ANCHOR_KEY];
-        if (savedAnchorPositions) {
-            [anchorPositions addEntriesFromDictionary:savedAnchorPositions];
-        }
+    mutableDict = savedDict ? [savedDict mutableCopy] : [NSMutableDictionary dictionary];
+    
+    NSDictionary *savedAnchorPositions = [mutableDict objectForKey:ANCHOR_KEY];
+    if (savedAnchorPositions) {
+        [anchorPositions addEntriesFromDictionary:savedAnchorPositions];
     }
+    
     %init;
 }
