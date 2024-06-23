@@ -1,4 +1,5 @@
 #import <UIKit/UIKit.h>
+#import <objc/runtime.h>
 
 #define PREF_PATH @"/var/mobile/Library/Preferences/com.ichitaso.iconorder.plist"
 #define KEY @"IconOrder"
@@ -48,7 +49,19 @@ NSMutableDictionary *mutableDict = dict ? [dict mutableCopy] : [NSMutableDiction
 }
 %end
 
+%hook SBHHomeScreenIconGridLayoutConfiguration
+- (NSUInteger)maximumIconCount {
+    // Original implementation
+    NSUInteger originalCount = %orig;
+    
+    // Custom implementation
+    NSUInteger customCount = self.numberOfPortraitRows * self.numberOfPortraitColumns;
+    
+    // Return the larger of the two
+    return MAX(originalCount, customCount);
+}
+%end
+
 %ctor {
-    class_addMethod(objc_getClass("SBIconListFlowExtendedLayout"), @selector(maximumIconCount), (IMP)&SBHHomeScreenIconGridLayoutConfiguration_maximumIconCount, "Q@:");
     %init;
 }
