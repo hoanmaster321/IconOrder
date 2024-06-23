@@ -32,8 +32,13 @@ static NSUInteger SBIconListFlowExtendedLayout_maximumIconCount(__unsafe_unretai
 }
 
 - (UIView *)currentIconView {
-    SBIconView *iconView = (SBIconView *)[self iconView];
-    return iconView;
+    // Ensure to return the appropriate view depending on the context
+    if ([self respondsToSelector:@selector(iconView)]) {
+        SBIconView *iconView = (SBIconView *)[self performSelector:@selector(iconView)];
+        return iconView;
+    } else {
+        return nil;
+    }
 }
 
 %end
