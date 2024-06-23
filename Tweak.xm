@@ -24,11 +24,16 @@ static NSUInteger SBIconListFlowExtendedLayout_maximumIconCount(__unsafe_unretai
 - (void)setIconState:(id)state {
     if ([state isKindOfClass:NSMutableDictionary.class]) {
         NSMutableDictionary *iconState = (NSMutableDictionary *)state;
-        CGPoint position = self.position;
+        CGPoint position = [self currentIconView].frame.origin;
         iconState[@"position"] = [NSValue valueWithCGPoint:position];
     }
     
     %orig;
+}
+
+- (UIView *)currentIconView {
+    SBIconView *iconView = (SBIconView *)[self iconView];
+    return iconView;
 }
 
 %end
