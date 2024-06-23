@@ -35,7 +35,7 @@ static NSMutableDictionary *mutableDict;
     @try {
         NSString *bundleID = self.applicationBundleIdentifierForShortcuts;
         if (bundleID && anchorPositions) {
-            NSValue *anchoredLocationValue = [anchorPositions objectForKey:bundleID];
+            NSValue *anchoredLocationValue = anchorPositions[bundleID];
             if (anchoredLocationValue) {
                 CGPoint anchoredLocation = [anchoredLocationValue CGPointValue];
                 if (!CGPointEqualToPoint(anchoredLocation, CGPointZero)) {
@@ -57,7 +57,7 @@ static NSMutableDictionary *mutableDict;
             CGPoint location = [touch locationInView:self.superview];
             NSString *bundleID = self.applicationBundleIdentifierForShortcuts;
             if (bundleID && anchorPositions) {
-                [anchorPositions setObject:[NSValue valueWithCGPoint:location] forKey:bundleID];
+                anchorPositions[bundleID] = [NSValue valueWithCGPoint:location];
                 [self setLocation:location];
             }
         }
@@ -70,7 +70,7 @@ static NSMutableDictionary *mutableDict;
     %orig;
     @try {
         if (mutableDict && anchorPositions) {
-            [mutableDict setObject:anchorPositions forKey:ANCHOR_KEY];
+            mutableDict[ANCHOR_KEY] = anchorPositions;
             [mutableDict writeToFile:PREF_PATH atomically:YES];
         }
     } @catch (NSException *exception) {
@@ -93,10 +93,11 @@ static NSMutableDictionary *mutableDict;
     id orig = %orig;
     @try {
         if (mutableDict) {
-            if ([mutableDict objectForKey:KEY]) {
-                return [mutableDict objectForKey:KEY];
+            id storedState = mutableDict[KEY];
+            if (storedState) {
+                return storedState;
             }
-            [mutableDict setValue:orig forKey:KEY];
+            mutableDict[KEY] = orig;
             [mutableDict writeToFile:PREF_PATH atomically:YES];
         }
     } @catch (NSException *exception) {
@@ -108,7 +109,7 @@ static NSMutableDictionary *mutableDict;
 - (void)setIconState:(id)state {
     @try {
         if (mutableDict) {
-            [mutableDict setValue:state forKey:KEY];
+            mutableDict[KEY] = state;
             [mutableDict writeToFile:PREF_PATH atomically:YES];
         }
     } @catch (NSException *exception) {
@@ -124,7 +125,7 @@ static NSMutableDictionary *mutableDict;
         NSDictionary *savedDict = [NSDictionary dictionaryWithContentsOfFile:PREF_PATH];
         mutableDict = savedDict ? [savedDict mutableCopy] : [NSMutableDictionary dictionary];
         
-        NSDictionary *savedAnchorPositions = [mutableDict objectForKey:ANCHOR_KEY];
+        NSDictionary *savedAnchorPositions = mutableDict[ANCHOR_KEY];
         if (savedAnchorPositions) {
             [anchorPositions addEntriesFromDictionary:savedAnchorPositions];
         }
