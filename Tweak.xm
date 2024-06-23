@@ -48,7 +48,6 @@ NSMutableDictionary *mutableDict = dict ? [dict mutableCopy] : [NSMutableDiction
 }
 %end
 
-
 %ctor {
     class_addMethod(objc_getClass("SBIconListFlowExtendedLayout"), @selector(maximumIconCount), (IMP)&SBIconListFlowExtendedLayout_maximumIconCount, "Q@:");
     %init;
