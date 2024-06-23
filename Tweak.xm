@@ -1,137 +1,97 @@
 #import <UIKit/UIKit.h>
-#import <objc/runtime.h>
 
 #define PREF_PATH @"/var/mobile/Library/Preferences/com.ichitaso.iconorder.plist"
 #define KEY @"IconOrder"
-#define ANCHOR_KEY @"AnchorPositions"
+#define ICON_POSITIONS_KEY @"IconPositions"
 
-@interface SBHHomeScreenIconGridLayoutConfiguration : NSObject
+// Define classes/interfaces
+@interface SBIconListGridLayoutConfiguration : NSObject
 @property(nonatomic) NSUInteger numberOfPortraitRows;
 @property(nonatomic) NSUInteger numberOfPortraitColumns;
 @end
 
-@interface SBHIconGridConfiguration : NSObject
-@property (nonatomic, readonly) SBHHomeScreenIconGridLayoutConfiguration *homeScreenConfiguration;
+@interface SBIconListFlowExtendedLayout : NSObject
+@property (nonatomic,copy,readonly) SBIconListGridLayoutConfiguration * layoutConfiguration;
 @end
 
-@interface SBIconView : UIView
-@property (nonatomic, retain) NSString *applicationBundleIdentifierForShortcuts;
-- (void)setLocation:(CGPoint)location;
-- (CGPoint)location;
-@end
-
-@interface SBIconController : NSObject
-+ (instancetype)sharedInstance;
-- (SBHIconGridConfiguration *)iconGridConfiguration;
-- (NSArray *)visibleIconViewsInRootFolder;
-@end
-
-static NSMutableDictionary *anchorPositions;
-static NSMutableDictionary *mutableDict;
-
-%hook SBIconView
-
-- (void)setLocation:(CGPoint)location {
-    @try {
-        NSString *bundleID = self.applicationBundleIdentifierForShortcuts;
-        if (bundleID && anchorPositions) {
-            NSValue *anchoredLocationValue = anchorPositions[bundleID];
-            if (anchoredLocationValue) {
-                CGPoint anchoredLocation = [anchoredLocationValue CGPointValue];
-                if (!CGPointEqualToPoint(anchoredLocation, CGPointZero)) {
-                    location = anchoredLocation;
-                }
-            }
-        }
-    } @catch (NSException *exception) {
-        NSLog(@"IconOrder: Exception in setLocation: %@", exception);
-    }
-    %orig(location);
+// Declare static function to calculate maximum icon count
+static NSUInteger SBIconListFlowExtendedLayout_maximumIconCount(__unsafe_unretained SBIconListFlowExtendedLayout* const self, SEL _cmd) {
+    return self.layoutConfiguration.numberOfPortraitRows * self.layoutConfiguration.numberOfPortraitColumns;
 }
 
-- (void)touchesMoved:(NSSet *)touches withEvent:(UIEvent *)event {
-    %orig;
-    @try {
-        UITouch *touch = [touches anyObject];
-        if (touch) {
-            CGPoint location = [touch locationInView:self.superview];
-            NSString *bundleID = self.applicationBundleIdentifierForShortcuts;
-            if (bundleID && anchorPositions) {
-                anchorPositions[bundleID] = [NSValue valueWithCGPoint:location];
-                [self setLocation:location];
-            }
-        }
-    } @catch (NSException *exception) {
-        NSLog(@"IconOrder: Exception in touchesMoved: %@", exception);
-    }
-}
+%hook SBIcon
 
-- (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event {
-    %orig;
-    @try {
-        if (mutableDict && anchorPositions) {
-            mutableDict[ANCHOR_KEY] = anchorPositions;
-            [mutableDict writeToFile:PREF_PATH atomically:YES];
-        }
-    } @catch (NSException *exception) {
-        NSLog(@"IconOrder: Exception in touchesEnded: %@", exception);
+- (void)setIconState:(id)state {
+    if ([state isKindOfClass:NSMutableDictionary.class]) {
+        NSMutableDictionary *iconState = (NSMutableDictionary *)state;
+        CGPoint position = self.position;
+        iconState[@"position"] = [NSValue valueWithCGPoint:position];
     }
+    
+    %orig;
 }
 
 %end
 
-%hook SBHHomeScreenIconGridLayoutConfiguration
-- (NSUInteger)maximumIconCount {
-    NSUInteger originalCount = %orig;
-    NSUInteger customCount = self.numberOfPortraitRows * self.numberOfPortraitColumns;
-    return MAX(originalCount, customCount);
-}
-%end
+%hook SBDefaultIconModelStore
 
-%hook SBIconController
-- (id)iconState {
+- (id)loadCurrentIconState:(id*)error {
     id orig = %orig;
-    @try {
-        if (mutableDict) {
-            id storedState = mutableDict[KEY];
-            if (storedState) {
-                return storedState;
-            }
-            mutableDict[KEY] = orig;
-            [mutableDict writeToFile:PREF_PATH atomically:YES];
-        }
-    } @catch (NSException *exception) {
-        NSLog(@"IconOrder: Exception in iconState: %@", exception);
+    
+    NSDictionary *dict = [NSDictionary dictionaryWithContentsOfFile:PREF_PATH];
+    NSMutableDictionary *mutableDict = dict ? [dict mutableCopy] : [NSMutableDictionary dictionary];
+    
+    if ([mutableDict objectForKey:KEY]) {
+        return [mutableDict objectForKey:KEY];
     }
+    
+    [mutableDict setValue:orig forKey:KEY];
+    [mutableDict writeToFile:PREF_PATH atomically:YES];
+
+    // Load icon positions if available
+    NSMutableDictionary *iconPositions = mutableDict[ICON_POSITIONS_KEY];
+    if (iconPositions && [orig respondsToSelector:@selector(enumerateKeysAndObjectsUsingBlock:)]) {
+        [orig enumerateKeysAndObjectsUsingBlock:^(id key, id obj, BOOL *stop) {
+            if ([obj isKindOfClass:NSDictionary.class] && [obj[@"position"] isKindOfClass:NSValue.class]) {
+                iconPositions[key] = obj[@"position"];
+            }
+        }];
+    }
+    
     return orig;
 }
 
-- (void)setIconState:(id)state {
-    @try {
-        if (mutableDict) {
-            mutableDict[KEY] = state;
-            [mutableDict writeToFile:PREF_PATH atomically:YES];
+- (BOOL)saveCurrentIconState:(id)state error:(id*)error {
+    // Save icon positions
+    if ([state respondsToSelector:@selector(enumerateKeysAndObjectsUsingBlock:)]) {
+        NSMutableDictionary *iconPositions = [NSMutableDictionary dictionary];
+        [state enumerateKeysAndObjectsUsingBlock:^(id key, id obj, BOOL *stop) {
+            if ([obj isKindOfClass:NSDictionary.class] && [obj[@"position"] isKindOfClass:NSValue.class]) {
+                iconPositions[key] = obj[@"position"];
+            }
+        }];
+        NSMutableDictionary *dict = [NSMutableDictionary dictionaryWithContentsOfFile:PREF_PATH];
+        if (!dict) {
+            dict = [NSMutableDictionary dictionary];
         }
-    } @catch (NSException *exception) {
-        NSLog(@"IconOrder: Exception in setIconState: %@", exception);
+        dict[ICON_POSITIONS_KEY] = iconPositions;
+        [dict writeToFile:PREF_PATH atomically:YES];
     }
-    %orig(state);
+    
+    NSMutableDictionary *mutableDict = [NSMutableDictionary dictionaryWithContentsOfFile:PREF_PATH];
+    if (!mutableDict) {
+        mutableDict = [NSMutableDictionary dictionary];
+    }
+    [mutableDict setValue:state forKey:KEY];
+    [mutableDict writeToFile:PREF_PATH atomically:YES];
+    
+    return %orig;
 }
+
 %end
 
 %ctor {
-    @try {
-        anchorPositions = [NSMutableDictionary dictionary];
-        NSDictionary *savedDict = [NSDictionary dictionaryWithContentsOfFile:PREF_PATH];
-        mutableDict = savedDict ? [savedDict mutableCopy] : [NSMutableDictionary dictionary];
-        
-        NSDictionary *savedAnchorPositions = mutableDict[ANCHOR_KEY];
-        if (savedAnchorPositions) {
-            [anchorPositions addEntriesFromDictionary:savedAnchorPositions];
-        }
-        
-        %init;
-    } @catch (NSException *exception) {
-        NSLog(@"IconOrder: Exception in ctor: %@", exception);
-    }
+    // Add method to SBIconListFlowExtendedLayout for maximumIconCount calculation
+    class_addMethod(objc_getClass("SBIconListFlowExtendedLayout"), @selector(maximumIconCount), (IMP)&SBIconListFlowExtendedLayout_maximumIconCount, "Q@:");
+    %init;
 }
