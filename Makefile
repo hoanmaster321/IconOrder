@@ -1,12 +1,12 @@
 DEBUG = 0
 FINALPACKAGE = 1
 
-ARCHS = arm64 arm64e
-
 ifeq ($(THEOS_PACKAGE_SCHEME),rootless)
-TARGET = iphone:16.2:15.0
+	ARCHS = arm64 arm64e
+	TARGET = iphone:clang:15.5:15.0
 else
-TARGET = iphone:14.5:12.0
+	ARCHS = armv7 armv7s arm64 arm64e
+	TARGET = iphone:clang:14.2:7.0
 endif
 
 THEOS_DEVICE_IP = 192.168.0.12
