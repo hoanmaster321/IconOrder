@@ -3,44 +3,53 @@
 #define PREF_PATH @"/var/mobile/Library/Preferences/com.ichitaso.iconorder.plist"
 #define KEY @"IconOrder"
 
-@interface SBIconListGridLayoutConfiguration : NSObject
+@interface SBHHomeScreenIconGridLayoutConfiguration : NSObject
 @property(nonatomic) NSUInteger numberOfPortraitRows;
 @property(nonatomic) NSUInteger numberOfPortraitColumns;
 @end
 
-@interface SBIconListFlowExtendedLayout : NSObject
-@property (nonatomic,copy,readonly) SBIconListGridLayoutConfiguration * layoutConfiguration;
+@interface SBHIconGridConfiguration : NSObject
+@property (nonatomic, readonly) SBHHomeScreenIconGridLayoutConfiguration *homeScreenConfiguration;
 @end
 
-static NSUInteger SBIconListFlowExtendedLayout_maximumIconCount(__unsafe_unretained SBIconListFlowExtendedLayout* const self, SEL _cmd) {
-    return self.layoutConfiguration.numberOfPortraitRows * self.layoutConfiguration.numberOfPortraitColumns;
+@interface SBIconController : NSObject
++ (instancetype)sharedInstance;
+- (SBHIconGridConfiguration *)iconGridConfiguration;
+@end
+
+static NSUInteger SBHHomeScreenIconGridLayoutConfiguration_maximumIconCount(SBHHomeScreenIconGridLayoutConfiguration* self, SEL _cmd) {
+    return self.numberOfPortraitRows * self.numberOfPortraitColumns;
 }
+
+%hook SBHHomeScreenIconGridLayoutConfiguration
+- (NSUInteger)maximumIconCount {
+    return SBHHomeScreenIconGridLayoutConfiguration_maximumIconCount(self, _cmd);
+}
+%end
 
 NSDictionary *dict = [NSDictionary dictionaryWithContentsOfFile:PREF_PATH];
 NSMutableDictionary *mutableDict = dict ? [dict mutableCopy] : [NSMutableDictionary dictionary];
 
-%hook SBDefaultIconModelStore
-- (id)loadCurrentIconState:(id*)error {
+%hook SBIconController
+- (id)iconState {
     id orig = %orig;
-
     if ([mutableDict objectForKey:KEY]) {
         return [mutableDict objectForKey:KEY];
     }
-
     [mutableDict setValue:orig forKey:KEY];
     [mutableDict writeToFile:PREF_PATH atomically:YES];
-
     return orig;
 }
-- (BOOL)saveCurrentIconState:(id)state error:(id*)error {
+
+- (void)setIconState:(id)state {
     [mutableDict setValue:state forKey:KEY];
     [mutableDict writeToFile:PREF_PATH atomically:YES];
-    return %orig;
+    %orig(state);
 }
 %end
 
+
 %ctor {
-    // Add gridiculous fix https://github.com/ryannair05/GridiculousFix
     class_addMethod(objc_getClass("SBIconListFlowExtendedLayout"), @selector(maximumIconCount), (IMP)&SBIconListFlowExtendedLayout_maximumIconCount, "Q@:");
     %init;
 }
