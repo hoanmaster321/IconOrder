@@ -32,31 +32,50 @@ static NSMutableDictionary *mutableDict;
 %hook SBIconView
 
 - (void)setLocation:(CGPoint)location {
-    NSString *bundleID = self.applicationBundleIdentifierForShortcuts;
-    if (bundleID) {
-        CGPoint anchoredLocation = [[anchorPositions objectForKey:bundleID] CGPointValue];
-        if (!CGPointEqualToPoint(anchoredLocation, CGPointZero)) {
-            location = anchoredLocation;
+    @try {
+        NSString *bundleID = self.applicationBundleIdentifierForShortcuts;
+        if (bundleID && anchorPositions) {
+            NSValue *anchoredLocationValue = [anchorPositions objectForKey:bundleID];
+            if (anchoredLocationValue) {
+                CGPoint anchoredLocation = [anchoredLocationValue CGPointValue];
+                if (!CGPointEqualToPoint(anchoredLocation, CGPointZero)) {
+                    location = anchoredLocation;
+                }
+            }
         }
+    } @catch (NSException *exception) {
+        NSLog(@"IconOrder: Exception in setLocation: %@", exception);
     }
     %orig(location);
 }
 
 - (void)touchesMoved:(NSSet *)touches withEvent:(UIEvent *)event {
     %orig;
-    UITouch *touch = [touches anyObject];
-    CGPoint location = [touch locationInView:self.superview];
-    NSString *bundleID = self.applicationBundleIdentifierForShortcuts;
-    if (bundleID) {
-        [anchorPositions setObject:[NSValue valueWithCGPoint:location] forKey:bundleID];
-        [self setLocation:location];
+    @try {
+        UITouch *touch = [touches anyObject];
+        if (touch) {
+            CGPoint location = [touch locationInView:self.superview];
+            NSString *bundleID = self.applicationBundleIdentifierForShortcuts;
+            if (bundleID && anchorPositions) {
+                [anchorPositions setObject:[NSValue valueWithCGPoint:location] forKey:bundleID];
+                [self setLocation:location];
+            }
+        }
+    } @catch (NSException *exception) {
+        NSLog(@"IconOrder: Exception in touchesMoved: %@", exception);
     }
 }
 
 - (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event {
     %orig;
-    [mutableDict setObject:anchorPositions forKey:ANCHOR_KEY];
-    [mutableDict writeToFile:PREF_PATH atomically:YES];
+    @try {
+        if (mutableDict && anchorPositions) {
+            [mutableDict setObject:anchorPositions forKey:ANCHOR_KEY];
+            [mutableDict writeToFile:PREF_PATH atomically:YES];
+        }
+    } @catch (NSException *exception) {
+        NSLog(@"IconOrder: Exception in touchesEnded: %@", exception);
+    }
 }
 
 %end
@@ -72,30 +91,46 @@ static NSMutableDictionary *mutableDict;
 %hook SBIconController
 - (id)iconState {
     id orig = %orig;
-    if ([mutableDict objectForKey:KEY]) {
-        return [mutableDict objectForKey:KEY];
+    @try {
+        if (mutableDict) {
+            if ([mutableDict objectForKey:KEY]) {
+                return [mutableDict objectForKey:KEY];
+            }
+            [mutableDict setValue:orig forKey:KEY];
+            [mutableDict writeToFile:PREF_PATH atomically:YES];
+        }
+    } @catch (NSException *exception) {
+        NSLog(@"IconOrder: Exception in iconState: %@", exception);
     }
-    [mutableDict setValue:orig forKey:KEY];
-    [mutableDict writeToFile:PREF_PATH atomically:YES];
     return orig;
 }
 
 - (void)setIconState:(id)state {
-    [mutableDict setValue:state forKey:KEY];
-    [mutableDict writeToFile:PREF_PATH atomically:YES];
+    @try {
+        if (mutableDict) {
+            [mutableDict setValue:state forKey:KEY];
+            [mutableDict writeToFile:PREF_PATH atomically:YES];
+        }
+    } @catch (NSException *exception) {
+        NSLog(@"IconOrder: Exception in setIconState: %@", exception);
+    }
     %orig(state);
 }
 %end
 
 %ctor {
-    anchorPositions = [NSMutableDictionary dictionary];
-    NSDictionary *savedDict = [NSDictionary dictionaryWithContentsOfFile:PREF_PATH];
-    mutableDict = savedDict ? [savedDict mutableCopy] : [NSMutableDictionary dictionary];
-    
-    NSDictionary *savedAnchorPositions = [mutableDict objectForKey:ANCHOR_KEY];
-    if (savedAnchorPositions) {
-        [anchorPositions addEntriesFromDictionary:savedAnchorPositions];
+    @try {
+        anchorPositions = [NSMutableDictionary dictionary];
+        NSDictionary *savedDict = [NSDictionary dictionaryWithContentsOfFile:PREF_PATH];
+        mutableDict = savedDict ? [savedDict mutableCopy] : [NSMutableDictionary dictionary];
+        
+        NSDictionary *savedAnchorPositions = [mutableDict objectForKey:ANCHOR_KEY];
+        if (savedAnchorPositions) {
+            [anchorPositions addEntriesFromDictionary:savedAnchorPositions];
+        }
+        
+        %init;
+    } @catch (NSException *exception) {
+        NSLog(@"IconOrder: Exception in ctor: %@", exception);
     }
-    
-    %init;
 }
